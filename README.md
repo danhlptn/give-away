@@ -33,7 +33,6 @@
       border: 2px solid transparent;
       border-image: linear-gradient(45deg, #ff6f61, #00ddeb) 1;
       margin-bottom: 30px;
-      transition: all 0.3s ease;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -70,11 +69,6 @@
       border: 2px solid #ff6f61;
       color: #fff;
     }
-    select:focus {
-      outline: none;
-      border-color: #00ddeb;
-      box-shadow: 0 0 12px rgba(0, 221, 235, 0.7);
-    }
     select option {
       background: #2c3e50;
       color: #fff;
@@ -91,7 +85,6 @@
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 1px;
-      border-radius: 10px;
     }
     button:hover {
       background: linear-gradient(45deg, #e65b50, #ff9f68);
@@ -125,7 +118,6 @@
     .error {
       color: #ff4444;
       font-size: 1em;
-      text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
       text-align: center;
     }
   </style>
@@ -145,12 +137,26 @@
     <ul id="registeredList"></ul>
   </div>
 
-  <script>
-    // Khởi tạo mảng lưu trữ đăng ký và danh sách người dùng
-    const registrations = {};
-    const users = new Set();
+  <!-- Firebase SDK & App Logic -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
+    import { getDatabase, ref, onValue, set, get } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js";
 
-    // Tạo các tùy chọn số từ 1 đến 150
+    const firebaseConfig = {
+      apiKey: "AIzaSyCyn-1cKitPlfJ9Kx4JMB0p0qsDRqzi4Ow",
+      authDomain: "test-5a33b.firebaseapp.com",
+      databaseURL: "https://test-5a33b-default-rtdb.firebaseio.com",
+      projectId: "test-5a33b",
+      storageBucket: "test-5a33b.firebasestorage.app",
+      messagingSenderId: "571352379860",
+      appId: "1:571352379860:web:b295e893cd572ff9fba641",
+      measurementId: "G-DGFZ3TZ90M"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const registrationsRef = ref(db, 'registrations');
+
     const numberSelect = document.getElementById('number');
     for (let i = 1; i <= 150; i++) {
       const option = document.createElement('option');
@@ -159,81 +165,71 @@
       numberSelect.appendChild(option);
     }
 
-    // Hàm đăng ký
-    function register() {
-      const username = document.getElementById('username').value.trim();
-      const number = document.getElementById('number').value;
+    onValue(registrationsRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      updateRegisteredList(data);
+      updateNumberOptions(data);
+    });
+
+    window.register = async function() {
+      const usernameInput = document.getElementById('username');
+      const numberInput = document.getElementById('number');
       const error = document.getElementById('error');
+      const username = usernameInput.value.trim();
+      const number = numberInput.value;
 
-      // Kiểm tra đầu vào
       if (!username || !number) {
-        error.textContent = 'Vui lòng nhập tên và chọn số!';
+        error.textContent = "Vui lòng nhập tên và chọn số!";
         return;
       }
 
-      // Kiểm tra người dùng đã đăng ký số khác chưa
-      if (users.has(username)) {
-        error.textContent = `Bạn đã đăng ký một số khác! Mỗi người chỉ được chọn một số.`;
+      const snapshot = await get(registrationsRef);
+      const data = snapshot.val() || {};
+
+      if (Object.values(data).includes(username)) {
+        error.textContent = "Bạn đã đăng ký một số khác!";
         return;
       }
 
-      // Kiểm tra số đã được đăng ký chưa
-      if (registrations[number]) {
-        error.textContent = `Số ${number} đã được đăng ký bởi ${registrations[number]}!`;
+      if (data[number]) {
+        error.textContent = `Số ${number} đã được đăng ký bởi ${data[number]}!`;
         return;
       }
 
-      // Lưu đăng ký
-      registrations[number] = username;
-      users.add(username);
-      error.textContent = '';
-      localStorage.setItem('registrations', JSON.stringify(registrations)); // Lưu vào localStorage
+      await set(ref(db, `registrations/${number}`), username);
+      error.style.color = "#00ff99";
+      error.textContent = `✅ Đăng ký thành công số ${number} cho ${username}!`;
+      usernameInput.value = '';
+      numberInput.value = '';
+    };
 
-      // Cập nhật danh sách và trạng thái số
-      updateRegisteredList();
-      updateNumberOptions();
-
-      // Reset form
-      document.getElementById('username').value = '';
-      document.getElementById('number').value = '';
+    function updateRegisteredList(data) {
+      const list = document.getElementById('registeredList');
+      list.innerHTML = '';
+      Object.entries(data)
+        .sort((a, b) => a[0] - b[0])
+        .forEach(([number, name]) => {
+          const li = document.createElement('li');
+          li.textContent = `Số ${number}: ${name}`;
+          list.appendChild(li);
+        });
     }
 
-    // Hàm cập nhật danh sách đã đăng ký
-    function updateRegisteredList() {
-      const registeredList = document.getElementById('registeredList');
-      registeredList.innerHTML = '';
-      for (const [number, username] of Object.entries(registrations).sort((a, b) => a[0] - b[0])) {
-        const li = document.createElement('li');
-        li.textContent = `Số ${number}: ${username}`;
-        registeredList.appendChild(li);
-      }
-    }
-
-    // Hàm cập nhật trạng thái các số trong menu thả xuống
-    function updateNumberOptions() {
+    function updateNumberOptions(data) {
       const options = numberSelect.getElementsByTagName('option');
       for (let i = 1; i < options.length; i++) {
         const number = options[i].value;
-        if (registrations[number]) {
+        if (data[number]) {
           options[i].disabled = true;
+          options[i].textContent = `${number} (Đã chọn)`;
           options[i].style.color = 'red';
         } else {
           options[i].disabled = false;
+          options[i].textContent = number;
           options[i].style.color = '';
         }
       }
     }
-
-    // Khôi phục dữ liệu từ localStorage khi tải trang
-    window.onload = function() {
-      const savedRegistrations = JSON.parse(localStorage.getItem('registrations')) || {};
-      Object.assign(registrations, savedRegistrations);
-      for (const username of Object.values(registrations)) {
-        users.add(username);
-      }
-      updateRegisteredList();
-      updateNumberOptions();
-    };
   </script>
 </body>
 </html>
